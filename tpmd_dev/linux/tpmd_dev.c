@@ -228,6 +228,7 @@ static bool can_handle_prop_req(u32 req) {
 
 static int handle_prop_req(u32 req) {
   struct tpm_command_ret_prop *buf =(struct tpm_command_ret_prop *) phy->buf;
+  size_t length;
   on_handle_begin();
   on_handle_send_complete();
   buf->header.tag = cpu_to_be16(TPM_TAG_RSP_COMMAND);
@@ -247,7 +248,11 @@ static int handle_prop_req(u32 req) {
 	  on_handle_error();
 	  return -1;
   }
-  phy->tail_index = sizeof(*buf); 
+  length = sizeof(*buf);
+  buf->header.length = cpu_to_be32(length);
+  buf->header.return_code = 0;
+  dev_info(phy->dev, "return length:%lu", length);
+  phy->tail_index = length; 
   on_handle_recv_complete();
   return 0; 
 }
@@ -398,6 +403,7 @@ static int write_and_excute(u32 addr, u16 len, const u8 *buffer) {
       if (*buffer == TPM_STS_GO){ // excute the command stored in buf
         if (is_request_cap()) {
 			u32 req = get_req_cmd();
+            dev_info(phy->dev,"get cap received:%u", req);
 			if (can_handle_prop_req(req))
 				return handle_prop_req(req);
 		}
