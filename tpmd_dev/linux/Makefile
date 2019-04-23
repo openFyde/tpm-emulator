@@ -3,11 +3,16 @@
 #
 # $Id: Makefile 364 2010-02-11 10:24:45Z mast $
 
-# kernel settingsRCH settings
-ARCH		?= $(shell uname -m)
-
+# kernel settings
 KERNEL_RELEASE := $(shell uname -r)
-KERNEL_BUILD   ?= /lib/modules/$(KERNEL_RELEASE)/build
+
+# KV_OUT_DIR is defined by portage so when it is defined we should use it to refer to the kernel build dir(that has the .config file)
+ifeq ($(KV_OUT_DIR),)
+KERNEL_BUILD   := /lib/modules/$(KERNEL_RELEASE)/build
+else
+KERNEL_BUILD   := $(KV_OUT_DIR)
+endif
+
 MOD_SUBDIR     := misc
 
 # module settings
