@@ -119,7 +119,7 @@ static u16 get_buf_length(void) {
   }
   return 0;
 }
-static int push_data(u8 *in, u16 len) {
+static int push_data(const u8 *in, u16 len) {
   u16 count=0;
   if (!phy || len == 0) return -1;
   if (len > (TPM_CMD_BUF_SIZE - phy->tail_index)) return -1;
@@ -228,7 +228,7 @@ on_error:
   on_handle_error();
   return res;
 }
-
+/*
 static int parse_command_and_excute(u32 addr, u16 len, u8 *buffer, bool is_read) {
   if (!phy) return -1;
   //dev_dbg(phy->dev, "get command:addr:(%x),len:%d,isread:%d", addr, len, is_read);
@@ -286,12 +286,68 @@ static int parse_command_and_excute(u32 addr, u16 len, u8 *buffer, bool is_read)
     }
   }
 }
+*/
+static int read_and_excute(u32 addr, u16 len, u8 *buffer) { 
+  if (!phy) return -1;
+    //dev_dbg(phy->dev, "get command:addr:(%x),len:%d,isread:%d", addr, len, is_read);
+  if (len == 1){
+    if (addr == TPM_ACCESS(phy->priv.locality)){ // get access property;
+      *buffer = get_access_prop();
+ //   dev_dbg(phy->dev, "return access status:(%x)", *buffer);
+      return 0;
+    }
+    if (addr == TPM_STS(phy->priv.locality)) { // get status;
+      *buffer = get_status_prop();
+  //  dev_dbg(phy->dev, "return status:(%x)", *buffer);
+      return 0;
+    }
+      if (addr == TPM_RID(phy->priv.locality)) { // get release id;
+      *buffer = get_rid();
+  //  dev_dbg(phy->dev, "return rid:(%x)", *buffer);
+      return 0;
+    }
+  }
+  if (addr == TPM_DATA_FIFO(phy->priv.locality)) {
+      return fetch_data(buffer, len);
+  } else {
+      memset(buffer,0 ,len);
+      return 0;
+  }
+}
+
+static int write_and_excute(u32 addr, u16 len, const u8 *buffer) {
+  if (!phy) return -1;
+    //dev_dbg(phy->dev, "get command:addr:(%x),len:%d,isread:%d", addr, len, is_read);
+  if (len == 1){
+    if (addr == TPM_STS(phy->priv.locality)) {
+      if (*buffer == TPM_STS_COMMAND_READY){ // reset system;
+          reset_phy();
+          return 0;
+      }
+      if (*buffer == TPM_STS_GO){ // excute the command stored in buf
+        return tpmd_handle_command();
+      }
+    }
+    if (addr == TPM_ACCESS(phy->priv.locality)){
+      if (*buffer == TPM_ACCESS_ACTIVE_LOCALITY) {
+        reset_phy();
+        inactive_locality();
+        return 0;
+      }
+    }
+  }
+  if (addr == TPM_DATA_FIFO(phy->priv.locality)) {
+      return push_data(buffer, len);
+  } else {
+      return 0;
+  }
+}
 
 static int tpmd_read_bytes(struct tpm_tis_data *data, u32 addr,
 			       u16 len, u8 *result) {
   int res=0;
   mutex_lock(&phy->emulator_mutex);
-  res = parse_command_and_excute(addr, len, result, true);
+  res = read_and_excute(addr, len, result);
   if (res < 0) {
     dev_err(phy->dev, "tpmd_read_bytes() failed: %d\n", res);
   } else {
@@ -302,11 +358,11 @@ static int tpmd_read_bytes(struct tpm_tis_data *data, u32 addr,
 }
 
 static int tpmd_write_bytes(struct tpm_tis_data *data, u32 addr,
-				u16 len, u8 *value)
+				u16 len, const u8 *value)
 {
   int res;
   mutex_lock(&phy->emulator_mutex);
-  res = parse_command_and_excute(addr, len, value, false);
+  res = write_and_excute(addr, len, value);
   if (res < 0) {
     dev_err(phy->dev, "tpmd_write_bytes() failed: %d, len: %d, value: %02x\n", res, len, *value);
   } else {
@@ -368,7 +424,7 @@ static int tpmd_write32(struct tpm_tis_data *data, u32 addr, u32 value)
   }
 
 	return data->phy_ops->write_bytes(data, addr, sizeof(u32),
-					   (u8 *)&le_val);
+					   (const u8 *)&le_val);
 }
 
 static const struct tpm_tis_phy_ops tpm_emulator_phy_ops = {

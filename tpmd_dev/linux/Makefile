@@ -24,7 +24,7 @@ MAKEFLAGS      += --no-print-directory
 EXTRA_CFLAGS   += -Wall -Werror
 
 all:
-	@$(MAKE) LD=$(LD) CC=$(CC) ARCH=$(ARCH) -C $(KERNEL_BUILD) M=$(CURDIR) modules
+	@$(MAKE) -C $(KERNEL_BUILD) M=$(CURDIR) modules
 
 clean:
 	@$(MAKE) LD=$(LD) CC=$(CC) ARCH=$(ARCH) -C $(KERNEL_BUILD) M=$(CURDIR) clean
