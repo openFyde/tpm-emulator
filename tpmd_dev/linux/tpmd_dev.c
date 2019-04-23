@@ -14,6 +14,9 @@
 #define TPM_DEVICE_MINOR  MISC_DYNAMIC_MINOR
 #define TPM_DEVICE_ID  "vtpm"
 #define TPM_READY_SIG "ready"
+#define TPM_TAG_RSP_COMMAND             0x00C4
+#define TPM_ORD_GET_CAP 101
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Mario Strasser <mast@gmx.net>, Yang Tsao <yang@flintos.io>");
 MODULE_DESCRIPTION("Trusted Platform Module (TPM) Emulator");
@@ -27,6 +30,15 @@ MODULE_PARM_DESC(tpmd_socket_name, " Sets the name of the TPM daemon socket.");
                         CLASS_NAME, __FILE__, __LINE__, ## __VA_ARGS__)
 #define info(fmt, ...)  printk(KERN_INFO "%s %s:%d: Info: " fmt "\n", \
                         CLASS_NAME, __FILE__, __LINE__, ## __VA_ARGS__)
+enum tpm_const_fydeos {
+    TPM_TIMEOUT_A		= 750,
+	TPM_TIMEOUT_B		= 2000,
+	TPM_TIMEOUT_C		= 200,
+	TPM_TIMEOUT_D		= 30,
+    TPM_DURATION_SHORT	= 20,
+	TPM_DURATION_MEDIUM	= 750,
+	TPM_DURATION_LONG	= 2000,
+};
 struct tpm_emulator_phy {
     struct socket *tpmd_sock;
     struct mutex emulator_mutex;
@@ -36,6 +48,19 @@ struct tpm_emulator_phy {
     u8 buf[TPM_CMD_BUF_SIZE];
     u16 header_index;
     u16 tail_index;
+};
+
+struct tpm_command_get_prop {
+  struct tpm_input_header header;
+  __be32 cmd_type;
+  __be32 space;
+  __be32 prop;  
+};
+
+struct tpm_command_ret_prop {
+  struct tpm_output_header header;
+  __be32 space;
+  cap_t cap;
 };
 
 u8 _status = 0x0;
@@ -179,6 +204,52 @@ static void on_handle_recv_complete(void) {
 
 static void on_handle_error(void) {
   reset_phy();
+}
+
+static bool is_request_cap(void) {
+  const struct tpm_command_get_prop *cmd = (const struct tpm_command_get_prop *) phy->buf;
+  if (get_buf_length() < TPM_HEADER_SIZE + 12)
+      return false;
+  return cmd->header.tag == cpu_to_be16(TPM_TAG_RQU_COMMAND) &&
+      cmd->header.ordinal == cpu_to_be32(TPM_ORD_GET_CAP) &&
+      cmd->cmd_type == cpu_to_be32(TPM_CAP_PROP);
+}
+
+static u32 get_req_cmd(void) {
+  const struct tpm_command_get_prop *cmd = (const struct tpm_command_get_prop *)phy->buf;
+  return be32_to_cpu(cmd->prop);
+}
+
+static bool can_handle_prop_req(u32 req) {
+  return req == TPM_CAP_PROP_TIS_TIMEOUT || 
+           req == TPM_CAP_PROP_TIS_DURATION;
+}
+
+
+static int handle_prop_req(u32 req) {
+  struct tpm_command_ret_prop *buf =(struct tpm_command_ret_prop *) phy->buf;
+  on_handle_begin();
+  on_handle_send_complete();
+  buf->header.tag = cpu_to_be16(TPM_TAG_RSP_COMMAND);
+  switch (req) {
+    case TPM_CAP_PROP_TIS_TIMEOUT:
+      buf->cap.timeout.a = cpu_to_be32(TPM_TIMEOUT_A);
+      buf->cap.timeout.b = cpu_to_be32(TPM_TIMEOUT_B);
+      buf->cap.timeout.c = cpu_to_be32(TPM_TIMEOUT_C);
+      buf->cap.timeout.d = cpu_to_be32(TPM_TIMEOUT_D);
+      break;
+    case TPM_CAP_PROP_TIS_DURATION:
+      buf->cap.duration.tpm_short = cpu_to_be32(TPM_DURATION_SHORT);
+      buf->cap.duration.tpm_medium = cpu_to_be32(TPM_DURATION_MEDIUM);
+      buf->cap.duration.tpm_long = cpu_to_be32(TPM_DURATION_LONG);
+      break;
+    default:
+	  on_handle_error();
+	  return -1;
+  }
+  phy->tail_index = sizeof(*buf); 
+  on_handle_recv_complete();
+  return 0; 
 }
 
 static int tpmd_handle_command(void){
@@ -325,6 +396,11 @@ static int write_and_excute(u32 addr, u16 len, const u8 *buffer) {
           return 0;
       }
       if (*buffer == TPM_STS_GO){ // excute the command stored in buf
+        if (is_request_cap()) {
+			u32 req = get_req_cmd();
+			if (can_handle_prop_req(req))
+				return handle_prop_req(req);
+		}
         return tpmd_handle_command();
       }
     }
