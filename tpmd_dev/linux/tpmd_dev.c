@@ -9,14 +9,16 @@
 #include <linux/version.h>
 #include "tpm_tis_core.h"
 #include "config.h"
+#define DEBUG 1
 
 #define CLASS_NAME "tpmd_dev"
 #define TPM_DEVICE_MINOR  MISC_DYNAMIC_MINOR
 #define TPM_DEVICE_ID  "vtpm"
 #define TPM_READY_SIG "ready"
+/*
 #define TPM_TAG_RSP_COMMAND             0x00C4
 #define TPM_ORD_GET_CAP 101
-
+*/
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Mario Strasser <mast@gmx.net>, Yang Tsao <yang@flintos.io>");
 MODULE_DESCRIPTION("Trusted Platform Module (TPM) Emulator");
@@ -30,6 +32,7 @@ MODULE_PARM_DESC(tpmd_socket_name, " Sets the name of the TPM daemon socket.");
                         CLASS_NAME, __FILE__, __LINE__, ## __VA_ARGS__)
 #define info(fmt, ...)  printk(KERN_INFO "%s %s:%d: Info: " fmt "\n", \
                         CLASS_NAME, __FILE__, __LINE__, ## __VA_ARGS__)
+/*
 enum tpm_const_fydeos {
     TPM_TIMEOUT_A		= 750,
 	TPM_TIMEOUT_B		= 2000,
@@ -39,17 +42,18 @@ enum tpm_const_fydeos {
 	TPM_DURATION_MEDIUM	= 750,
 	TPM_DURATION_LONG	= 2000,
 };
+*/
 struct tpm_emulator_phy {
     struct socket *tpmd_sock;
     struct mutex emulator_mutex;
-	  struct tpm_tis_data priv;
-	  struct device *dev;
+    struct tpm_tis_data priv;
+    struct device *dev;
     struct sockaddr_un sock_addr;
     u8 buf[TPM_CMD_BUF_SIZE];
     u16 header_index;
     u16 tail_index;
 };
-
+/*
 struct tpm_command_get_prop {
   struct tpm_input_header header;
   __be32 cmd_type;
@@ -62,7 +66,7 @@ struct tpm_command_ret_prop {
   __be32 space;
   cap_t cap;
 };
-
+*/
 u8 _status = 0x0;
 u8 _access = 0x0;
 
@@ -128,8 +132,8 @@ static void set_data_expect(void){
 static void unset_data_expect(void){
   _status &= ~TPM_STS_DATA_EXPECT;
 }
-static u32 get_vid (void) {return TPM_VID_INTEL;}
-static u8 get_rid (void){return 1;}
+static u32 get_vid (void) {return 0x8087 << 16;}
+static u8 get_rid (void){return 0x1;}
 static u32 get_caps (void) {return TPM_INTF_BURST_COUNT_STATIC;}
 static u32 get_bust_count(void){return TPM_CMD_BUF_SIZE;}
 static void reset_buf(void){
@@ -191,21 +195,25 @@ static int fetch_data(u8 *out, u16 len) {
 }
 
 static void on_handle_begin(void) {
+  dev_info(phy->dev, "on_handle_begin");
   unset_command_ready();
 }
 
 static void on_handle_send_complete(void){
+  dev_info(phy->dev, "on_handle_send_complete");
   reset_buf();
 }
 
 static void on_handle_recv_complete(void) {
+  dev_info(phy->dev, "on_handle_recv_complete");
   set_data_avalible();
 }
 
 static void on_handle_error(void) {
+  dev_info(phy->dev, "on_handle_error");
   reset_phy();
 }
-
+/*
 static bool is_request_cap(void) {
   const struct tpm_command_get_prop *cmd = (const struct tpm_command_get_prop *) phy->buf;
   if (get_buf_length() < TPM_HEADER_SIZE + 12)
@@ -256,14 +264,14 @@ static int handle_prop_req(u32 req) {
   on_handle_recv_complete();
   return 0; 
 }
-
+*/
 static int tpmd_handle_command(void){
   int res;
-  mm_segment_t oldmm;
+//  mm_segment_t oldmm;
   struct msghdr msg;
   struct iovec iov;
-  oldmm = get_fs();
-  set_fs(KERNEL_DS);
+//  oldmm = get_fs();
+//  set_fs(KERNEL_DS);
   if (!phy) return -1;
   if (get_buf_length() < 1) return -1;
   /* send command to tpmd */
@@ -277,10 +285,10 @@ static int tpmd_handle_command(void){
     error("sock_sendmsg() failed: %d\n", res);
     goto on_error;
   }
-  set_fs(oldmm);
+ // set_fs(oldmm);
   on_handle_send_complete();
-  oldmm = get_fs();
-  set_fs(KERNEL_DS);
+ // oldmm = get_fs();
+ // set_fs(KERNEL_DS);
   /* receive response from tpmd */
   memset(&msg, 0, sizeof(msg));
   iov.iov_base = (void*)phy->buf;
@@ -291,7 +299,7 @@ static int tpmd_handle_command(void){
                      TPM_CMD_BUF_SIZE,
 #endif
                      0);
-  set_fs(oldmm);
+  //set_fs(oldmm);
   if (res < 0) {
     error("sock_recvmsg() failed: %d\n", res);
     goto on_error;
@@ -300,7 +308,7 @@ static int tpmd_handle_command(void){
   on_handle_recv_complete();
   return 0;
 on_error:
-  set_fs(oldmm);
+ // set_fs(oldmm);
   on_handle_error();
   return res;
 }
@@ -365,7 +373,7 @@ static int parse_command_and_excute(u32 addr, u16 len, u8 *buffer, bool is_read)
 */
 static int read_and_excute(u32 addr, u16 len, u8 *buffer) { 
   if (!phy) return -1;
-    //dev_dbg(phy->dev, "get command:addr:(%x),len:%d,isread:%d", addr, len, is_read);
+    dev_dbg(phy->dev, "get read command:addr:(%x),len:%d", addr, len);
   if (len == 1){
     if (addr == TPM_ACCESS(phy->priv.locality)){ // get access property;
       *buffer = get_access_prop();
@@ -393,7 +401,7 @@ static int read_and_excute(u32 addr, u16 len, u8 *buffer) {
 
 static int write_and_excute(u32 addr, u16 len, const u8 *buffer) {
   if (!phy) return -1;
-    //dev_dbg(phy->dev, "get command:addr:(%x),len:%d,isread:%d", addr, len, is_read);
+  dev_dbg(phy->dev, "get write command:addr:(%x),len:%d", addr, len);
   if (len == 1){
     if (addr == TPM_STS(phy->priv.locality)) {
       if (*buffer == TPM_STS_COMMAND_READY){ // reset system;
@@ -401,12 +409,13 @@ static int write_and_excute(u32 addr, u16 len, const u8 *buffer) {
           return 0;
       }
       if (*buffer == TPM_STS_GO){ // excute the command stored in buf
+          /*
         if (is_request_cap()) {
 			u32 req = get_req_cmd();
             dev_info(phy->dev,"get cap received:%u", req);
 			if (can_handle_prop_req(req))
 				return handle_prop_req(req);
-		}
+		}*/
         return tpmd_handle_command();
       }
     }
@@ -415,6 +424,10 @@ static int write_and_excute(u32 addr, u16 len, const u8 *buffer) {
         reset_phy();
         inactive_locality();
         return 0;
+      }
+      if (*buffer == TPM_ACCESS_REQUEST_USE) {
+        set_access_prop_ready();
+        return 0; 
       }
     }
   }
