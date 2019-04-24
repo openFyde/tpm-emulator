@@ -267,11 +267,11 @@ static int handle_prop_req(u32 req) {
 */
 static int tpmd_handle_command(void){
   int res;
-//  mm_segment_t oldmm;
+  mm_segment_t oldmm;
   struct msghdr msg;
   struct iovec iov;
-//  oldmm = get_fs();
-//  set_fs(KERNEL_DS);
+  oldmm = get_fs();
+  set_fs(KERNEL_DS);
   if (!phy) return -1;
   if (get_buf_length() < 1) return -1;
   /* send command to tpmd */
@@ -285,10 +285,10 @@ static int tpmd_handle_command(void){
     error("sock_sendmsg() failed: %d\n", res);
     goto on_error;
   }
- // set_fs(oldmm);
+  set_fs(oldmm);
   on_handle_send_complete();
- // oldmm = get_fs();
- // set_fs(KERNEL_DS);
+  oldmm = get_fs();
+  set_fs(KERNEL_DS);
   /* receive response from tpmd */
   memset(&msg, 0, sizeof(msg));
   iov.iov_base = (void*)phy->buf;
@@ -299,7 +299,7 @@ static int tpmd_handle_command(void){
                      TPM_CMD_BUF_SIZE,
 #endif
                      0);
-  //set_fs(oldmm);
+  set_fs(oldmm);
   if (res < 0) {
     error("sock_recvmsg() failed: %d\n", res);
     goto on_error;
@@ -308,7 +308,7 @@ static int tpmd_handle_command(void){
   on_handle_recv_complete();
   return 0;
 on_error:
- // set_fs(oldmm);
+  set_fs(oldmm);
   on_handle_error();
   return res;
 }
