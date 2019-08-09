@@ -49,7 +49,7 @@ static int tpmd_connect(char *socket_name)
   int res;
   res = sock_create(PF_UNIX, SOCK_STREAM, 0, &phy->tpmd_sock);
   if (res != 0) {
-    dev_err(phy->dev, "sock_create() failed: %d\n", res);
+    error("sock_create() failed: %d\n", res);
     phy->tpmd_sock = NULL;
     return res;
   }
@@ -58,7 +58,7 @@ static int tpmd_connect(char *socket_name)
   res = phy->tpmd_sock->ops->connect(phy->tpmd_sock,
     (struct sockaddr*) &phy->sock_addr, sizeof(struct sockaddr_un), 0);
   if (res != 0) {
-    dev_err(phy->dev, "sock_connect() failed: %d\n", res);
+    error("sock_connect() failed: %d\n", res);
     phy->tpmd_sock->ops->release(phy->tpmd_sock);
     phy->tpmd_sock = NULL;
   }
@@ -296,7 +296,7 @@ static int tpmd_read_bytes(struct tpm_tis_data *data, u32 addr,
   mutex_lock(&phy->emulator_mutex);
   res = read_and_excute(addr, len, result);
   if (res < 0) {
-    dev_err(phy->dev, "tpmd_read_bytes() failed: %d\n", res);
+    error("tpmd_read_bytes() failed: %d\n", res);
   } else {
     res = 0;
   }
@@ -311,7 +311,7 @@ static int tpmd_write_bytes(struct tpm_tis_data *data, u32 addr,
   mutex_lock(&phy->emulator_mutex);
   res = write_and_excute(addr, len, value);
   if (res < 0) {
-    dev_err(phy->dev, "tpmd_write_bytes() failed: %d, len: %d, value: %02x\n", res, len, *value);
+    error("tpmd_write_bytes() failed: %d, len: %d, value: %02x\n", res, len, *value);
   } else {
     res = 0;
   }
@@ -386,14 +386,14 @@ static const struct tpm_tis_phy_ops tpm_emulator_phy_ops = {
 static int register_to_tpm_tis(void){
   int ret;
   if (!phy) return -1;
-  dev_info(phy->dev, "registering tpm_tis interface.\n");
+  info("registering tpm_tis interface.\n");
   reset_phy();
   ret = tpm_tis_core_init(phy->dev, &phy->priv, -1, &tpm_emulator_phy_ops, NULL);
   if (ret < 0) {
-    dev_err(phy->dev, "tpm_tis init error:%d", ret);
+    error("tpm_tis init error:%d", ret);
     goto on_error;
   }
-  dev_info(phy->dev, "tpm_tis initialized.\n");
+  info("tpm_tis initialized.\n");
   return 0;
 on_error:
   _status = 0;
@@ -414,12 +414,12 @@ static ssize_t tpm_read(struct file *file, char *buf, size_t count, loff_t *ppos
 
 static ssize_t tpm_write(struct file *file, const char *buf, size_t count, loff_t *ppos) {
   int ret;
-  dev_info(phy->dev, "get sig: %s", buf);
+  info("get sig: %s", buf);
   if (strncmp(buf, TPM_READY_SIG, strlen(TPM_READY_SIG)) == 0) {
-    dev_info(phy->dev, "begin open socked.");
+    info("begin open socked.");
     ret = tpmd_connect(tpmd_socket_name);
     if (ret != 0) {
-      dev_err(phy->dev, "socket open error:%d", ret);
+      error("socket open error:%d", ret);
       return count;
     }
     register_to_tpm_tis();
